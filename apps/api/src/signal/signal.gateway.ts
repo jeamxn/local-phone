@@ -80,6 +80,7 @@ export class SignalGateway
       socket,
       name: (body.name || 'Guest').slice(0, 40),
       lang: body.lang || 'en',
+      micOn: true,
       camOn: false,
       screenOn: false,
       roomId,
@@ -118,6 +119,7 @@ export class SignalGateway
   ): void {
     const self = this.peerOf(socket);
     if (!self) return;
+    self.micOn = !!body?.micOn;
     self.camOn = !!body?.camOn;
     self.screenOn = !!body?.screenOn;
     this.server.to(self.roomId).emit(EV.peerUpdated, { peer: peerInfo(self) });

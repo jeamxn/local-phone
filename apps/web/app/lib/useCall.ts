@@ -40,6 +40,9 @@ export interface UseCall {
   micOn: boolean;
   camOn: boolean;
   screenOn: boolean;
+  /** Active-speech detection. localSpeaking = me; speaking[peerId] = that peer. */
+  localSpeaking: boolean;
+  speaking: Record<string, boolean>;
   chat: ChatMsg[];
   listenMode: ListenMode;
   transcripts: Record<string, string>;
@@ -68,6 +71,8 @@ export function useCall(roomId: string, name: string, lang: string): UseCall {
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(false);
   const [screenOn, setScreenOn] = useState(false);
+  const [localSpeaking, setLocalSpeaking] = useState(false);
+  const [speaking, setSpeaking] = useState<Record<string, boolean>>({});
   const [chat, setChat] = useState<ChatMsg[]>([]);
   const [listenMode, setListenModeState] = useState<ListenMode>("translated");
   const [transcripts, setTranscripts] = useState<Record<string, string>>({});
@@ -116,6 +121,8 @@ export function useCall(roomId: string, name: string, lang: string): UseCall {
       setPeers((prev) =>
         prev.map((p) => (p.id === peerId ? { ...p, stream: stream ?? p.stream } : p)),
       );
+      // attach a voice-activity detector to the remote audio
+      if (stream) attachRemoteSpeaking(peerId, stream);
     };
 
     pc.onnegotiationneeded = async () => {
@@ -151,6 +158,14 @@ export function useCall(roomId: string, name: string, lang: string): UseCall {
       pl.close();
       players.current.delete(peerId);
     }
+    remoteSpeakStops.current.get(peerId)?.();
+    remoteSpeakStops.current.delete(peerId);
+    setSpeaking((prev) => {
+      if (!(peerId in prev)) return prev;
+      const next = { ...prev };
+      delete next[peerId];
+      return next;
+    });
   }, []);
 
   // ---- handle inbound signaling (perfect negotiation) ----
@@ -300,12 +315,15 @@ export function useCall(roomId: string, name: string, lang: string): UseCall {
         }
         // start PCM uplink for translation
         startMicCapture(stream);
+        // start local speaking detection (RMS over an analyser node)
+        startSpeakingDetection(stream);
       } catch (err) {
         console.error("getUserMedia(audio) failed", err);
       }
     })();
     return () => {
       cancelled = true;
+      speakingStopRef.current?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -318,10 +336,149 @@ export function useCall(roomId: string, name: string, lang: string): UseCall {
     });
   }, []);
 
+  // ---- local speaking (voice-activity) detection ----
+  const speakingStopRef = useRef<(() => void) | null>(null);
+  const startSpeakingDetection = useCallback((stream: MediaStream) => {
+    speakingStopRef.current?.();
+    try {
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext })
+          .webkitAudioContext;
+      const ctx = new AudioCtx();
+      const src = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      src.connect(analyser);
+      const buf = new Uint8Array(analyser.fftSize);
+      let raf = 0;
+      let speakingNow = false;
+      let aboveSince = 0;
+      let belowSince = 0;
+      const tick = () => {
+        analyser.getByteTimeDomainData(buf);
+        // RMS around 128 midpoint
+        let sum = 0;
+        for (let i = 0; i < buf.length; i++) {
+          const v = (buf[i] - 128) / 128;
+          sum += v * v;
+        }
+        const rms = Math.sqrt(sum / buf.length);
+        const now = performance.now();
+        const speakingThreshold = 0.04;
+        if (micOnRef.current && rms > speakingThreshold) {
+          belowSince = 0;
+          if (!aboveSince) aboveSince = now;
+          if (!speakingNow && now - aboveSince > 120) {
+            speakingNow = true;
+            setLocalSpeaking(true);
+          }
+        } else {
+          aboveSince = 0;
+          if (!belowSince) belowSince = now;
+          if (speakingNow && now - belowSince > 350) {
+            speakingNow = false;
+            setLocalSpeaking(false);
+          }
+        }
+        raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+      speakingStopRef.current = () => {
+        cancelAnimationFrame(raf);
+        try {
+          src.disconnect();
+          void ctx.close();
+        } catch {
+          /* ignore */
+        }
+      };
+    } catch (err) {
+      console.error("speaking detection failed", err);
+    }
+  }, []);
+
   const micOnRef = useRef(true);
+  const camOnRef = useRef(false);
+  const screenOnRef = useRef(false);
+
+  // ---- remote speaking detection (one analyser per peer) ----
+  const remoteSpeakStops = useRef<Map<string, () => void>>(new Map());
+  const attachRemoteSpeaking = useCallback((peerId: string, stream: MediaStream) => {
+    remoteSpeakStops.current.get(peerId)?.();
+    if (stream.getAudioTracks().length === 0) return;
+    try {
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext })
+          .webkitAudioContext;
+      const ctx = new AudioCtx();
+      const src = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      src.connect(analyser);
+      const buf = new Uint8Array(analyser.fftSize);
+      let raf = 0;
+      let on = false;
+      let aboveSince = 0;
+      let belowSince = 0;
+      const tick = () => {
+        analyser.getByteTimeDomainData(buf);
+        let sum = 0;
+        for (let i = 0; i < buf.length; i++) {
+          const v = (buf[i] - 128) / 128;
+          sum += v * v;
+        }
+        const rms = Math.sqrt(sum / buf.length);
+        const now = performance.now();
+        if (rms > 0.04) {
+          belowSince = 0;
+          if (!aboveSince) aboveSince = now;
+          if (!on && now - aboveSince > 120) {
+            on = true;
+            setSpeaking((prev) => ({ ...prev, [peerId]: true }));
+          }
+        } else {
+          aboveSince = 0;
+          if (!belowSince) belowSince = now;
+          if (on && now - belowSince > 350) {
+            on = false;
+            setSpeaking((prev) => ({ ...prev, [peerId]: false }));
+          }
+        }
+        raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+      remoteSpeakStops.current.set(peerId, () => {
+        cancelAnimationFrame(raf);
+        try {
+          src.disconnect();
+          void ctx.close();
+        } catch {
+          /* ignore */
+        }
+      });
+    } catch (err) {
+      console.error("remote speaking detection failed", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    camOnRef.current = camOn;
+  }, [camOn]);
+  useEffect(() => {
+    screenOnRef.current = screenOn;
+  }, [screenOn]);
   useEffect(() => {
     micOnRef.current = micOn;
     localStreamRef.current?.getAudioTracks().forEach((t) => (t.enabled = micOn));
+    if (!micOn) setLocalSpeaking(false);
+    // broadcast updated mic state to peers
+    socketRef.current?.emit(EV.mediaState, {
+      micOn,
+      camOn: camOnRef.current,
+      screenOn: screenOnRef.current,
+    });
   }, [micOn]);
 
   // ---- controls ----
@@ -349,7 +506,7 @@ export function useCall(roomId: string, name: string, lang: string): UseCall {
       camTrackRef.current = null;
       if (!screenOn) removeVideoTracks();
       setCamOn(false);
-      socketRef.current?.emit(EV.mediaState, { camOn: false, screenOn });
+      socketRef.current?.emit(EV.mediaState, { micOn: micOnRef.current, camOn: false, screenOn });
       return;
     }
     try {
@@ -361,7 +518,7 @@ export function useCall(roomId: string, name: string, lang: string): UseCall {
       setLocalStream(new MediaStream(ls.getTracks()));
       addOrReplaceVideoTrack(track, ls);
       setCamOn(true);
-      socketRef.current?.emit(EV.mediaState, { camOn: true, screenOn });
+      socketRef.current?.emit(EV.mediaState, { micOn: micOnRef.current, camOn: true, screenOn });
     } catch (err) {
       console.error("getUserMedia(video) failed", err);
     }
@@ -378,7 +535,7 @@ export function useCall(roomId: string, name: string, lang: string): UseCall {
         removeVideoTracks();
       }
       setScreenOn(false);
-      socketRef.current?.emit(EV.mediaState, { camOn, screenOn: false });
+      socketRef.current?.emit(EV.mediaState, { micOn: micOnRef.current, camOn, screenOn: false });
       return;
     }
     try {
@@ -391,7 +548,7 @@ export function useCall(roomId: string, name: string, lang: string): UseCall {
       };
       addOrReplaceVideoTrack(track, localStreamRef.current!);
       setScreenOn(true);
-      socketRef.current?.emit(EV.mediaState, { camOn, screenOn: true });
+      socketRef.current?.emit(EV.mediaState, { micOn: micOnRef.current, camOn, screenOn: true });
     } catch (err) {
       console.error("getDisplayMedia failed", err);
     }
@@ -426,6 +583,8 @@ export function useCall(roomId: string, name: string, lang: string): UseCall {
     micOn,
     camOn,
     screenOn,
+    localSpeaking,
+    speaking,
     chat,
     listenMode,
     transcripts,

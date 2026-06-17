@@ -6,6 +6,7 @@ export interface Peer {
   socket: Socket;
   name: string;
   lang: string;
+  micOn: boolean;
   camOn: boolean;
   screenOn: boolean;
   roomId: string;
@@ -16,6 +17,7 @@ export function peerInfo(p: Peer): PeerInfo {
     id: p.id,
     name: p.name,
     lang: p.lang,
+    micOn: p.micOn,
     camOn: p.camOn,
     screenOn: p.screenOn,
   };

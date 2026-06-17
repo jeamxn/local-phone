@@ -4,6 +4,7 @@ export interface PeerInfo {
   id: string;
   name: string;
   lang: string;
+  micOn: boolean;
   camOn: boolean;
   screenOn: boolean;
 }

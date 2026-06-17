@@ -8,6 +8,7 @@ export interface PeerInfo {
   name: string;
   /** Language the peer SPEAKS / wants to HEAR (BCP-47, e.g. "ko", "en"). */
   lang: string;
+  micOn: boolean;
   camOn: boolean;
   screenOn: boolean;
 }
@@ -25,6 +26,7 @@ export interface SetLangPayload {
   lang: string;
 }
 export interface MediaStatePayload {
+  micOn: boolean;
   camOn: boolean;
   screenOn: boolean;
 }

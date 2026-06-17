@@ -254,9 +254,10 @@ function CallRoom({ roomId, name, lang }: { roomId: string; name: string; lang: 
             lang={myLang}
             stream={call.localStream}
             muted
-            mirror={call.camOn && !call.screenOn}
             hasVideo={call.camOn || call.screenOn}
             screen={call.screenOn}
+            micOn={call.micOn}
+            speaking={call.localSpeaking}
             isSelf
           />
           {call.peers.map((p) => (
@@ -268,6 +269,8 @@ function CallRoom({ roomId, name, lang }: { roomId: string; name: string; lang: 
               muted={call.listenMode === "translated"}
               hasVideo={p.camOn || p.screenOn}
               screen={p.screenOn}
+              micOn={p.micOn}
+              speaking={!!call.speaking[p.id]}
               transcript={call.transcripts[p.id]}
             />
           ))}
