@@ -85,15 +85,12 @@ export function useCall(roomId: string, name: string, lang: string): UseCall {
   // keep refs in sync
   useEffect(() => {
     listenModeRef.current = listenMode;
-    // mute/unmute original audio tracks of remote streams per listen mode
-    const original = listenMode === "original" || listenMode === "both";
-    for (const p of peers) {
-      p.stream?.getAudioTracks().forEach((t) => (t.enabled = original));
-    }
-    // translated players only audible in translated/both
+    // Original peer audio is muted at the <video> element level (see room.tsx),
+    // NOT by toggling remote track.enabled (that fights element muting and can
+    // wedge audio when video toggles). Here we only gate translated playback.
     const translated = listenMode === "translated" || listenMode === "both";
     for (const pl of players.current.values()) pl.setVolume(translated ? 1 : 0);
-  }, [listenMode, peers]);
+  }, [listenMode]);
 
   // ---- per-peer connection ----
   const ensureConn = useCallback((peerId: string, polite: boolean): PeerConn => {

@@ -7,7 +7,9 @@ interface Props {
   name: string;
   lang: string;
   stream: MediaStream | null;
-  muted?: boolean; // mute the <video> element (always true for self to avoid echo)
+  /** Mute this tile's ORIGINAL audio (always true for self to avoid echo;
+   *  true for peers when the listener only wants translated audio). */
+  muted?: boolean;
   mirror?: boolean;
   hasVideo: boolean;
   screen?: boolean;
@@ -28,11 +30,21 @@ export function VideoTile({
 }: Props) {
   const ref = useRef<HTMLVideoElement>(null);
 
+  // ONE persistent <video> element. Re-attach the stream whenever it changes
+  // (and on mount). Never conditionally swap the element — doing so drops
+  // srcObject and kills both audio and video when cam/screen toggles.
   useEffect(() => {
-    if (ref.current && stream) {
-      ref.current.srcObject = stream;
+    const el = ref.current;
+    if (el && el.srcObject !== stream) {
+      el.srcObject = stream;
     }
   }, [stream]);
+
+  // Imperatively keep the muted property in sync (React's `muted` attribute is
+  // unreliable after first render on some browsers).
+  useEffect(() => {
+    if (ref.current) ref.current.muted = !!muted;
+  }, [muted]);
 
   return (
     <div
@@ -48,26 +60,21 @@ export function VideoTile({
         justifyContent: "center",
       }}
     >
-      {hasVideo ? (
-        <video
-          ref={ref}
-          autoPlay
-          playsInline
-          muted={muted}
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: screen ? "contain" : "cover",
-            transform: mirror ? "scaleX(-1)" : undefined,
-          }}
-        />
-      ) : (
-        <>
-          {/* keep audio flowing even with no video */}
-          {stream ? <video ref={ref} autoPlay playsInline muted={muted} style={{ display: "none" }} /> : null}
-          <Avatar size={64} icon={<UserOutlined />} />
-        </>
-      )}
+      {/* always mounted so srcObject survives cam/screen toggles */}
+      <video
+        ref={ref}
+        autoPlay
+        playsInline
+        muted={muted}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: screen ? "contain" : "cover",
+          transform: mirror ? "scaleX(-1)" : undefined,
+          display: hasVideo ? "block" : "none",
+        }}
+      />
+      {!hasVideo ? <Avatar size={64} icon={<UserOutlined />} /> : null}
 
       <div
         style={{

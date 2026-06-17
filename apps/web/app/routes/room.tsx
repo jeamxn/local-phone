@@ -265,6 +265,7 @@ function CallRoom({ roomId, name, lang }: { roomId: string; name: string; lang: 
               name={p.name}
               lang={p.lang}
               stream={p.stream}
+              muted={call.listenMode === "translated"}
               hasVideo={p.camOn || p.screenOn}
               screen={p.screenOn}
               transcript={call.transcripts[p.id]}
