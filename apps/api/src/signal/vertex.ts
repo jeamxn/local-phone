@@ -39,10 +39,11 @@ export function getVertexConfig(): VertexConfig {
     model:
       process.env.GEMINI_TRANSLATE_MODEL ||
       // The dedicated gemini-*-live-translate-preview models are AI Studio
-      // only — NOT published to Vertex Model Garden. On Vertex the only live
-      // model that opens + accepts translationConfig for this project is the
-      // native-audio model below (verified probe across all regions).
-      "gemini-live-2.5-flash-preview-native-audio-09-2025",
+      // (ai.google.dev) only — NOT in Vertex's Live API model list and probed
+      // "Publisher Model not found" across all regions. On Vertex the live
+      // models are the native-audio family; use the GA-stable id (the
+      // ...-preview-...-09-2025 variant is flagged deprecated by Vertex docs).
+      "gemini-live-2.5-flash-native-audio",
   };
 }
 
