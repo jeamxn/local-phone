@@ -1,0 +1,17 @@
+{
+  "name": "local-phone",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WebRTC P2P phone with realtime Gemini translation",
+  "scripts": {
+    "dev:web": "pnpm --filter web dev",
+    "dev:signal": "pnpm --filter signal dev",
+    "build:web": "pnpm --filter web build",
+    "build:signal": "pnpm --filter signal build",
+    "build": "pnpm -r build"
+  },
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=20"
+  }
+}
