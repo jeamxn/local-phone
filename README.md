@@ -43,4 +43,11 @@ pnpm dev:web
 ## 배포
 
 루트 `docker-compose.yml` 참고. Dokploy/Coolify에서 빌드되며 web(3000)/api(8080) 두 서비스를 띄운다.
-Vertex 환경변수는 PaaS UI에 넣는다. PEM 멀티라인이 깨지면 `VERTEX_PRIVATE_KEY_B64`(base64 한 줄)를 대신 사용.
+
+- 호스트 포트 바인딩(`ports`) 대신 `expose`만 쓰고, PaaS(Traefik)에서 **web→3000 / api→8080** 으로 각각 도메인을 매핑한다. 브라우저가 소켓(api)에 직접 붙으므로 api에도 공개 도메인이 필요하다.
+- `VITE_SIGNAL_URL`은 web 클라이언트 번들에 **빌드타임**에 박힌다. compose의 build args로 실제 api 공개 URL(예: `https://api.example.com`)을 넣고, 도메인이 바뀌면 web을 재빌드해야 한다.
+- Vertex 환경변수는 PaaS UI/.env에 넣는다. PEM 멀티라인이 깨지면 `VERTEX_PRIVATE_KEY_B64`(base64 한 줄)를 대신 사용:
+  ```bash
+  base64 -w0 < private_key.pem
+  ```
+- 카메라/마이크/화면공유는 **HTTPS(또는 localhost)** 에서만 동작한다. 배포 도메인은 반드시 https.

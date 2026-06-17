@@ -1,0 +1,53 @@
+# local-phone 배포용 compose.
+#
+# Dokploy/Coolify (Traefik 프록시) 기준:
+#   - 호스트 포트 바인딩(ports) 금지 — expose만 쓰고 도메인은 PaaS에서 라우팅.
+#   - web -> 컨테이너 3000, api -> 컨테이너 8080 으로 각각 도메인 매핑.
+#   - 브라우저가 api(소켓)에 직접 붙으므로 api에도 공개 도메인이 필요하다.
+#
+# 로컬에서 직접 띄우려면 아래 `ports:` 주석을 풀어서 쓰면 된다.
+#
+# 필수 환경변수는 .env (또는 PaaS UI)로 주입한다. .env.example 참고.
+# VITE_SIGNAL_URL 은 web 클라이언트 번들에 빌드타임에 박히므로 build args 로 전달한다.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      SIGNAL_PORT: "8080"
+      VERTEX_PROJECT_ID: ${VERTEX_PROJECT_ID}
+      VERTEX_LOCATION: ${VERTEX_LOCATION:-global}
+      VERTEX_CLIENT_EMAIL: ${VERTEX_CLIENT_EMAIL}
+      VERTEX_CLIENT_ID: ${VERTEX_CLIENT_ID}
+      VERTEX_CLIENT_X509_CERT_URL: ${VERTEX_CLIENT_X509_CERT_URL}
+      VERTEX_PRIVATE_KEY_ID: ${VERTEX_PRIVATE_KEY_ID}
+      # PEM 멀티라인이 PaaS .env 파서에서 깨지면 VERTEX_PRIVATE_KEY_B64(base64 한 줄)를 대신 채운다.
+      VERTEX_PRIVATE_KEY: ${VERTEX_PRIVATE_KEY:-}
+      VERTEX_PRIVATE_KEY_B64: ${VERTEX_PRIVATE_KEY_B64:-}
+      VERTEX_DNS_MAPPING: ${VERTEX_DNS_MAPPING:-}
+      GEMINI_TRANSLATE_MODEL: ${GEMINI_TRANSLATE_MODEL:-gemini-3.5-live-translate-preview}
+    expose:
+      - "8080"
+    # 로컬 직접 실행 시:
+    # ports:
+    #   - "8080:8080"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # 브라우저에서 보이는 api 공개 URL. 배포 시 실제 도메인으로 교체.
+        VITE_SIGNAL_URL: ${VITE_SIGNAL_URL:-http://localhost:8080}
+        VITE_ICE_SERVERS: ${VITE_ICE_SERVERS:-}
+    expose:
+      - "3000"
+    # 로컬 직접 실행 시:
+    # ports:
+    #   - "3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
