@@ -2,11 +2,39 @@ import { randomUUID } from "node:crypto";
 import { WebSocketServer, WebSocket } from "ws";
 import type { ClientMessage, ServerMessage } from "./protocol.js";
 import { Rooms, peerInfo, type Peer } from "./rooms.js";
+import { TranslationHub } from "./translate.js";
 
 const PORT = Number(process.env.SIGNAL_PORT ?? 8080);
 
 const rooms = new Rooms();
 const wss = new WebSocketServer({ port: PORT });
+
+// Map a speakerId -> the roomId they're in, so translated audio can be routed.
+const speakerRoom = new Map<string, string>();
+
+const hub = new TranslationHub(
+  // onAudio: deliver translated speech to every listener in the room whose lang matches
+  (speakerId, targetLang, pcm) => {
+    const roomId = speakerRoom.get(speakerId);
+    if (!roomId) return;
+    for (const p of rooms.others(roomId, speakerId)) {
+      if (p.lang === targetLang) {
+        send(p.ws, { type: "translated-audio", from: speakerId, pcm });
+      }
+    }
+  },
+  // onText: optional translated transcript
+  (speakerId, targetLang, text) => {
+    const roomId = speakerRoom.get(speakerId);
+    if (!roomId) return;
+    for (const p of rooms.others(roomId, speakerId)) {
+      if (p.lang === targetLang) {
+        send(p.ws, { type: "translated-text", from: speakerId, text });
+      }
+    }
+  },
+);
+console.log(`[signal] translation ${hub.enabled ? "ENABLED" : "DISABLED (no Vertex creds)"}`);
 
 function send(ws: WebSocket, msg: ServerMessage): void {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
@@ -49,6 +77,7 @@ wss.on("connection", (ws) => {
         roomId,
       };
       rooms.add(self);
+      speakerRoom.set(self.id, roomId);
 
       const peers = rooms.others(roomId, self.id).map(peerInfo);
       send(ws, { type: "joined", selfId: self.id, roomId, peers });
@@ -94,7 +123,13 @@ wss.on("connection", (ws) => {
         break;
       }
       case "audio": {
-        // translation handled in a later module; ignored for now
+        if (!hub.enabled) break;
+        const pcm = typeof msg.pcm === "string" ? msg.pcm : "";
+        if (!pcm) break;
+        // translate this speaker's voice into every distinct listener language
+        const targetLangs = rooms.distinctLangs(self.roomId, self.id);
+        if (targetLangs.length === 0) break;
+        void hub.pushAudio(self.id, targetLangs, self.lang, pcm);
         break;
       }
       default:
@@ -104,6 +139,8 @@ wss.on("connection", (ws) => {
 
   const cleanup = () => {
     if (!self) return;
+    hub.closeSpeaker(self.id);
+    speakerRoom.delete(self.id);
     rooms.remove(self.roomId, self.id);
     broadcast(self.roomId, self.id, { type: "peer-left", id: self.id });
     self = null;
