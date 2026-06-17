@@ -30,4 +30,6 @@ COPY --from=build /out/node_modules ./node_modules
 COPY --from=build /out/package.json ./package.json
 COPY --from=build /repo/apps/web/build ./build
 EXPOSE 3000
-CMD ["node", "node_modules/.bin/react-router-serve", "./build/server/index.js"]
+# Run the real Node entrypoint, NOT node_modules/.bin/react-router-serve
+# (that's a /bin/sh wrapper — `node` on it throws SyntaxError).
+CMD ["node", "node_modules/@react-router/serve/dist/cli.js", "./build/server/index.js"]
