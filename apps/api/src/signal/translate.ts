@@ -26,6 +26,7 @@ type TextOut = (speakerId: string, targetLang: string, text: string) => void;
 
 export class TranslationHub {
   private sessions = new Map<string, TransSession>(); // key: `${speakerId}:${targetLang}`
+  private cooldownUntil = new Map<string, number>(); // key -> ts; skip reconnect while in cooldown
   private sweepTimer: NodeJS.Timeout;
 
   constructor(
@@ -76,6 +77,10 @@ export class TranslationHub {
       return ts;
     }
 
+    // Don't hammer Vertex if recent connects failed (e.g. bad model/region).
+    const cd = this.cooldownUntil.get(k);
+    if (cd && Date.now() < cd) return undefined;
+
     ts = { session: null, connecting: null, lastUsed: Date.now(), targetLang, speakerId };
     this.sessions.set(k, ts);
 
@@ -101,13 +106,20 @@ export class TranslationHub {
             onerror: (e: { message?: string }) =>
               console.error(`[trans] error ${k}:`, e?.message),
             onclose: (e: { reason?: string }) => {
-              console.log(`[trans] close ${k}: ${e?.reason ?? ""}`);
+              const reason = e?.reason ?? "";
+              console.log(`[trans] close ${k}: ${reason}`);
               this.sessions.delete(k);
+              // Fatal config errors (model/region) — back off so we don't loop.
+              if (/not\s*found|not\s*supported|permission|invalid/i.test(reason)) {
+                this.cooldownUntil.set(k, Date.now() + 60_000);
+                console.error(`[trans] cooldown 60s for ${k} (fatal): ${reason}`);
+              }
             },
           },
         });
       } catch (e) {
         console.error(`[trans] connect failed ${k}:`, e);
+        this.cooldownUntil.set(k, Date.now() + 30_000);
         this.sessions.delete(k);
       } finally {
         if (ts) ts.connecting = null;

@@ -25,9 +25,17 @@ export interface VertexConfig {
 }
 
 export function getVertexConfig(): VertexConfig {
+  // The Live API (gemini-*-live-*) is served from regional endpoints, NOT the
+  // `global` endpoint. TTS/Lyria/image work on global, but a live-translate
+  // session opened against `global` fails with "Publisher Model ... was not
+  // found" and reconnect-loops. Default to a regional endpoint and only honor
+  // VERTEX_LOCATION when it's an actual region (not "global").
+  const envLoc = process.env.VERTEX_LOCATION?.trim();
+  const location =
+    envLoc && envLoc.toLowerCase() !== "global" ? envLoc : "us-central1";
   return {
     project: process.env.VERTEX_PROJECT_ID ?? "",
-    location: process.env.VERTEX_LOCATION || "global",
+    location,
     model:
       process.env.GEMINI_TRANSLATE_MODEL ||
       "gemini-3.5-live-translate-preview",
