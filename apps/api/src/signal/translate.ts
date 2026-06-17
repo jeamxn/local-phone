@@ -98,10 +98,11 @@ export class TranslationHub {
             // transcripts of source + translated audio (useful for captions)
             inputAudioTranscription: {},
             outputAudioTranscription: {},
-            contextWindowCompression: {
-              triggerTokens: "0",
-              slidingWindow: { targetTokens: "0" },
-            },
+            // NOTE: do NOT set contextWindowCompression here. The Vertex
+            // native-audio model rejects triggerTokens:"0" with
+            // "Context window trigger tokens must be within [5000,128000]".
+            // Omitting it uses the model's default windowing — fine for
+            // continuous low-latency translation.
           } as Record<string, unknown>,
           callbacks: {
             onopen: () => console.log(`[trans] open ${k}`),
@@ -112,8 +113,9 @@ export class TranslationHub {
               const reason = e?.reason ?? "";
               console.log(`[trans] close ${k}: ${reason}`);
               this.sessions.delete(k);
-              // Fatal config errors (model/region) — back off so we don't loop.
-              if (/not\s*found|not\s*supported|permission|invalid/i.test(reason)) {
+              // Fatal config errors (model/region/bad config) — back off so
+              // we don't busy-loop reopening a session that can't succeed.
+              if (/not\s*found|not\s*supported|permission|invalid|must be within|trigger tokens/i.test(reason)) {
                 this.cooldownUntil.set(k, Date.now() + 60_000);
                 console.error(`[trans] cooldown 60s for ${k} (fatal): ${reason}`);
               }
