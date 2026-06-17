@@ -95,6 +95,9 @@ export class TranslationHub {
             responseModalities: [Modality.AUDIO],
             // realtime translation directive
             translationConfig: { targetLanguageCode: targetLang },
+            // transcripts of source + translated audio (useful for captions)
+            inputAudioTranscription: {},
+            outputAudioTranscription: {},
             contextWindowCompression: {
               triggerTokens: "0",
               slidingWindow: { targetTokens: "0" },

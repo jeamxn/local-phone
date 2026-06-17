@@ -38,7 +38,11 @@ export function getVertexConfig(): VertexConfig {
     location,
     model:
       process.env.GEMINI_TRANSLATE_MODEL ||
-      "gemini-3.5-live-translate-preview",
+      // The dedicated gemini-*-live-translate-preview models are AI Studio
+      // only — NOT published to Vertex Model Garden. On Vertex the only live
+      // model that opens + accepts translationConfig for this project is the
+      // native-audio model below (verified probe across all regions).
+      "gemini-live-2.5-flash-preview-native-audio-09-2025",
   };
 }
 
