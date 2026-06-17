@@ -29,7 +29,7 @@ export default function handleRequest(
         [readyOption]() {
           shellRendered = true;
           const body = new PassThrough({
-            transform(chunk, _enc, cb) {
+            transform(chunk: Buffer, _enc: string, cb: (err: Error | null, data?: Buffer | string) => void) {
               const s = chunk.toString();
               if (s.includes("__ANTD_STYLE__")) {
                 cb(null, s.replace("__ANTD_STYLE__", extractStyle(cache, true)));
