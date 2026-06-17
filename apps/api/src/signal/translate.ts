@@ -9,7 +9,7 @@
  * Sessions are lazily created on first audio frame and torn down when idle.
  */
 import { Modality, type Session } from "@google/genai";
-import { getGenAI, getVertexConfig, vertexConfigured } from "./vertex.js";
+import { getGenAI, getVertexConfig, vertexConfigured } from "./vertex";
 
 const IDLE_MS = 60_000; // close a session after 60s of no audio
 

@@ -1,9 +1,9 @@
-import { WebSocket } from "ws";
-import type { PeerInfo } from "./protocol.js";
+import type { Socket } from 'socket.io';
+import type { PeerInfo } from './protocol';
 
 export interface Peer {
   id: string;
-  ws: WebSocket;
+  socket: Socket;
   name: string;
   lang: string;
   camOn: boolean;
